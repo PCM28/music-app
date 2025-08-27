@@ -1,9 +1,7 @@
 package com.nter.pierre.carrillo_springboot_fundamentals.content.auth.infrastructure.security.jwt;
 
-import com.nter.pierre.carrillo_springboot_fundamentals.content.auth.infrastructure.security.model.UserDetailsImpl;
-import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -12,59 +10,64 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
-import java.util.List;
-import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Component
 public class JwtUtils {
 
-    private final SecretKey key;
-    private final long accessMs;
-    private final long refreshExtraMs;
+    private static final String CLAIM_AUTHORITIES = "authorities";
+    private static final long EXP_MILLIS = 30 * 60 * 1000; // 30 minutos
 
-    public JwtUtils(@Value("${jwt.secret}") String secret,
-                    @Value("${jwt.expiration-ms:900000}") long accessMs,
-                    @Value("${jwt.refresh-extra-ms:600000}") long refreshExtraMs) {
-        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-        this.accessMs = accessMs;
-        this.refreshExtraMs = refreshExtraMs;
+    @Value("${security.jwt.key.private}")
+    private String privateKey;
+
+    @Value("${security.jwt.user.generator}")
+    private String userGenerator;
+
+    private SecretKey hmacKey() {
+        return Keys.hmacShaKeyFor(privateKey.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateJwtToken(Authentication authentication, boolean refreshToken) {
-        var principal = (UserDetailsImpl) authentication.getPrincipal();
-        var roles = principal.getAuthorities().stream().map(GrantedAuthority::getAuthority).toList();
-        long now = System.currentTimeMillis();
-        long ttl = refreshToken ? accessMs + refreshExtraMs : accessMs;
+    public String createToken(Authentication authentication) {
+        String username = authentication.getPrincipal().toString();
+        String authorities = authentication.getAuthorities()
+                .stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.joining(","));
+
+        Date now =  new Date();
+        Date exp = new Date(now.getTime() + EXP_MILLIS);
 
         return Jwts.builder()
-                .subject(principal.getUsername())
-                .claim("roles", roles)
-                .issuedAt(new Date(now))
-                .expiration(new Date(now + ttl))
-                .signWith(key, Jwts.SIG.HS256)
+                .setIssuer(userGenerator)
+                .setSubject(username)
+                .claim(CLAIM_AUTHORITIES, authorities)
+                .setIssuedAt(now)
+                .setNotBefore(now)
+                .setExpiration(exp)
+                .setId(UUID.randomUUID().toString())
+                .signWith(hmacKey())
                 .compact();
     }
 
-    public Optional<UserDetailsImpl> validateJwtToken(String jwt) {
+    public Jws<Claims> validateToken(String token) throws JwtException {
         try {
-            var claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(jwt).getPayload();
-            String username = claims.getSubject();
-            @SuppressWarnings("unchecked")
-            var roles = (List<String>) claims.get("roles");
-            var authorities = roles.stream()
-                    .map(r -> r.startsWith("ROLE_") ? r : "ROLE_" + r)
-                    .map(org.springframework.security.core.authority.SimpleGrantedAuthority::new)
-                    .toList();
-
-            var user = UserDetailsImpl.builder()
-                    .username(username)
-                    .authorities(authorities)
-                    .userType(UserDetailsImpl.UserType.DATABASE)
-                    .build();
-
-            return Optional.of(user);
-        } catch (Exception e) {
-            return Optional.empty();
+            return Jwts.parser()
+                    .verifyWith(hmacKey())
+                    .requireIssuer(userGenerator)
+                    .build()
+                    .parseSignedClaims(token);
+        } catch (JwtException exception) {
+            throw new JwtException("Token invalid, not Authorized: ", exception);
         }
+    }
+
+    public String extractUsername(Jws<Claims> decodedJWT){
+        return decodedJWT.getPayload().getSubject();
+    }
+
+    public String extractAuthorities(Jws<Claims> jws) {
+        return jws.getPayload().get(CLAIM_AUTHORITIES, String.class);
     }
 }

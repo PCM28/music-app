@@ -10,6 +10,9 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface PlaylistMapper {
     PlaylistOutputDto playlistToPlaylistOutputDto(Playlist playlist);
+
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "songs", ignore = true)
     Playlist playlistInputDtoToPlaylist(PlaylistInputDto playlistInputDto);
 
     @Mapping(target = "playlist_id", source = "id")

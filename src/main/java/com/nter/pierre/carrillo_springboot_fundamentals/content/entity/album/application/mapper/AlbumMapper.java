@@ -10,6 +10,10 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface AlbumMapper {
     AlbumOutputDto albumToAlbumOutputDto(Album album);
+
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "artist", ignore = true)
+    @Mapping(target = "songs", ignore = true)
     Album albumInputDtoToAlbum(AlbumInputDto albumInputDto);
 
     @Mapping(target = "album_id", source = "id")

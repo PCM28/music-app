@@ -10,6 +10,9 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface GenreMapper {
     GenreOutputDto genreToGenreOutputDto(Genre genre);
+
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "artists", ignore = true)
     Genre genreInputDtoToGenre(GenreInputDto genreInputDto);
 
     @Mapping(target = "genre_id", source = "id")
